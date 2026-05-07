@@ -43,13 +43,30 @@ cd ..
 
 # Install cloud-provider-kind (LoadBalancer support)
 log "Installing cloud-provider-kind..."
-ARCH=$(dpkg --print-architecture)
-wget -q "https://github.com/kubernetes-sigs/cloud-provider-kind/releases/download/v0.6.0/cloud-provider-kind_0.6.0_linux_${ARCH}.tar.gz" \
-  -O /tmp/cloud-provider-kind.tar.gz
-tar -xzf /tmp/cloud-provider-kind.tar.gz -C /tmp cloud-provider-kind
-rm /tmp/cloud-provider-kind.tar.gz
-nohup /tmp/cloud-provider-kind > /tmp/cloud-provider-kind.log 2>&1 &
-log "cloud-provider-kind started (pid $!)"
+case "$(uname -s)" in
+  Linux)  CPK_OS=linux ;;
+  Darwin) CPK_OS=darwin ;;
+  *)
+    log "Unsupported OS: $(uname -s); skipping cloud-provider-kind"
+    CPK_OS=
+    ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) CPK_ARCH=amd64 ;;
+  arm64|aarch64) CPK_ARCH=arm64 ;;
+  *)
+    log "Unsupported arch: $(uname -m); skipping cloud-provider-kind"
+    CPK_ARCH=
+    ;;
+esac
+if [[ -n "${CPK_OS:-}" && -n "${CPK_ARCH:-}" ]]; then
+  CPK_URL="https://github.com/kubernetes-sigs/cloud-provider-kind/releases/download/v0.6.0/cloud-provider-kind_0.6.0_${CPK_OS}_${CPK_ARCH}.tar.gz"
+  curl -fsSL "$CPK_URL" -o /tmp/cloud-provider-kind.tar.gz
+  tar -xzf /tmp/cloud-provider-kind.tar.gz -C /tmp cloud-provider-kind
+  rm -f /tmp/cloud-provider-kind.tar.gz
+  nohup /tmp/cloud-provider-kind > /tmp/cloud-provider-kind.log 2>&1 &
+  log "cloud-provider-kind started (pid $!)"
+fi
 
 
 log "=== setup complete ==="
