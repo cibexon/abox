@@ -120,5 +120,5 @@ spec:
   apiKeySecretKey: AGENTGW_API_KEY
   model: gemini-2.5-flash
   openAI:
-    baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1   ##change to actual agentgateway-external svc source
+    baseUrl: http://agentgateway-external.agentgateway-system.svc.cluster.local/v1
   provider: OpenAI
