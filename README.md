@@ -37,7 +37,7 @@ make run  →  scripts/setup.sh
   → tofu apply (bootstrap/)
       → KinD cluster
       → Flux Operator + FluxInstance
-      → ResourceSetInputProvider   polls oci://ghcr.io/den-vasyliev/abox/releases
+      → ResourceSetInputProvider   polls oci://ghcr.io/cibexon/abox/releases
       → ResourceSet                creates OCIRepository + 2 Kustomizations
           → releases/crds/    gateway-api-crds, agentgateway-crds, kagent-crds
           → releases/         agentgateway (Gateway + GatewayClass)
