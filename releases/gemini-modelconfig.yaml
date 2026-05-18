@@ -7,4 +7,4 @@ spec:
   apiKeySecret: gemini-api-key
   apiKeySecretKey: apiKey
   model: gemini-2.5-flash
-  provider: Google
+  provider: Gemini
