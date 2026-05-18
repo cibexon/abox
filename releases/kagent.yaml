@@ -109,3 +109,16 @@ spec:
     - name: kagent-ui
       namespace: kagent
       port: 8080
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: agentgateway-gemini
+  namespace: kagent
+spec:
+  apiKeySecret: kagent-agentgw
+  apiKeySecretKey: AGENTGW_API_KEY
+  model: gemini-2.5-flash
+  openAI:
+    baseUrl: http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1   ##change to actual agentgateway-external svc source
+  provider: OpenAI
