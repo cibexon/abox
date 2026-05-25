@@ -1,0 +1,45 @@
+---
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: fetch-mcp
+  namespace: kagent
+spec:
+  transportType: stdio
+  deployment:
+    image: mcp/fetch
+
+---
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: fetch-agent
+  namespace: kagent
+spec:
+  type: Declarative
+  description: Agent that fetches and summarizes web page content
+  declarative:
+    modelConfig: agentgateway-gemini
+    runtime: python
+    systemMessage: |
+      You are a helpful assistant that can fetch and read content from web URLs.
+
+      # Instructions
+      - Use the fetch tool to retrieve content from URLs when asked
+      - Summarize the content clearly and concisely
+      - If a URL is not accessible or returns an error, explain what happened
+      - Always format your response as Markdown
+
+      # Response format
+      - Start with a short summary of what was fetched
+      - Include the key information from the page
+      - If the user asks a specific question about the content, answer it directly
+    tools:
+    - type: McpServer
+      mcpServer:
+        apiGroup: kagent.dev
+        kind: MCPServer
+        name: fetch-mcp
+        namespace: kagent
+        toolNames:
+        - fetch
