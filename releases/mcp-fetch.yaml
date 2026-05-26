@@ -8,6 +8,10 @@ spec:
   transportType: stdio
   deployment:
     image: mcp/fetch
+    cmd: python3
+    args:
+    - -m
+    - mcp_server_fetch
 
 ---
 apiVersion: kagent.dev/v1alpha2
