@@ -1,0 +1,46 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-governance
+
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: mcp-security-governance
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://github.com/techwithhuz/mcp-security-governance
+  ref:
+    branch: main
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mcpg
+  namespace: mcp-governance
+spec:
+  interval: 10m
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: charts/mcp-governance
+      sourceRef:
+        kind: GitRepository
+        name: mcp-security-governance
+        namespace: flux-system
+  values:
+    controller:
+      image:
+        repository: ghcr.io/techwithhuz/mcp-governance-controller
+        tag: latest
+        pullPolicy: Always
+    dashboard:
+      image:
+        repository: ghcr.io/techwithhuz/mcp-governance-dashboard
+        tag: latest
+        pullPolicy: Always

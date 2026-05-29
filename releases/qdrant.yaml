@@ -1,0 +1,29 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: qdrant
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://qdrant.github.io/qdrant-helm
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: qdrant
+  namespace: kagent
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: qdrant
+      sourceRef:
+        kind: HelmRepository
+        name: qdrant
+        namespace: flux-system
+  values:
+    replicaCount: 1
+    persistence:
+      size: 1Gi
