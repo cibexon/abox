@@ -5,6 +5,21 @@ metadata:
   name: agentregistry
 
 ---
+apiVersion: agentregistry.dev/v1alpha1
+kind: DiscoveryConfig
+metadata:
+  name: abox-discovery
+  namespace: agentregistry
+spec:
+  environments:
+    - name: abox
+      cluster:
+        name: local
+        namespace: kagent
+      namespaces:
+        - kagent
+      discoveryEnabled: true
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
