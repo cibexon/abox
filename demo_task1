@@ -1,0 +1,264 @@
+root@lima-default:~/fwdays_k8s_ai_agents# cat demo
+#!/usr/bin/env bash
+# =============================================================================
+# AgentGateway + kagent demo — asciinema presentation script
+# Usage: bash demo.sh
+# Tip:   record with: asciinema rec demo.cast -c "bash demo.sh"
+# =============================================================================
+
+set -euo pipefail
+
+# ── colors ────────────────────────────────────────────────────────────────────
+RESET="\033[0m"
+BOLD="\033[1m"
+DIM="\033[2m"
+CYAN="\033[36m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+WHITE="\033[97m"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+# print text character by character (typewriter effect)
+type_text() {
+  local text="$1"
+  local delay="${2:-0.03}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep "$delay"
+  done <<< "$text"
+  echo
+}
+
+# print a section header banner
+banner() {
+  local text="$1"
+  local width=70
+  local line
+  line=$(printf '─%.0s' $(seq 1 $width))
+  echo
+  echo -e "${BOLD}${CYAN}┌${line}┐${RESET}"
+  printf "${BOLD}${CYAN}│${RESET}  %-66s${BOLD}${CYAN}  │${RESET}\n" "$text"
+  echo -e "${BOLD}${CYAN}└${line}┘${RESET}"
+  echo
+}
+
+# print a comment / explanation line — typed character by character
+comment() {
+  local text="# $1"
+  echo -ne "${DIM}${GREEN}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep 0.03
+  done <<< "$text"
+  echo -e "${RESET}"
+}
+
+# print a command prompt — typed character by character, then run
+run_cmd() {
+  local cmd="$1"
+  echo -ne "${BOLD}${WHITE}\$ ${RESET}${BOLD}${BLUE}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep 0.04
+  done <<< "$cmd"
+  echo -e "${RESET}"
+  sleep 0.4
+  eval "$cmd"
+}
+
+# pause with a visual prompt
+pause() {
+  local seconds="${1:-2}"
+  sleep "$seconds"
+}
+
+# print a note box
+note() {
+  local text="$1"
+  local width=68
+  local line
+  line=$(printf '─%.0s' $(seq 1 $width))
+  echo
+  echo -e "${YELLOW}  ╔${line}╗${RESET}"
+  # word-wrap at 64 chars
+  echo "$text" | fold -s -w 64 | while IFS= read -r l; do
+    printf "${YELLOW}  ║${RESET}  %-64s${YELLOW}  ║${RESET}\n" "$l"
+  done
+  echo -e "${YELLOW}  ╚${line}╝${RESET}"
+  echo
+}
+
+# ── clear screen and show title ───────────────────────────────────────────────
+clear
+
+echo
+echo -e "${BOLD}${MAGENTA}"
+cat << 'EOF'
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║         AgentGateway + kagent — Kubernetes Demo                  ║
+  ║         Level: MAX  (Kubernetes Gateway API)                     ║
+  ╚══════════════════════════════════════════════════════════════════╝
+EOF
+echo -e "${RESET}"
+
+comment "This demo covers the full 'Max' level task:"
+comment "  AgentGateway deployed via Helm + Kubernetes Gateway API"
+comment "  kagent agents routed through agentgateway-proxy"
+comment "  Live LLM call (Gemini 2.5 Flash Lite) via OpenAI-compatible endpoint"
+pause 3
+
+# =============================================================================
+# STEP 1 — cluster namespaces
+# =============================================================================
+banner "STEP 1 / 4  —  Cluster overview: namespaces"
+
+comment "First, verify the cluster state."
+comment "Two namespaces matter here:"
+comment "  agentgateway-system  — gateway runtime (proxy + controller)"
+comment "  kagent               — agent framework"
+pause 2
+
+run_cmd "kubectl get ns"
+pause 2
+
+note "Both agentgateway-system and kagent are Active. Everything is up."
+pause 3
+
+clear
+# =============================================================================
+# STEP 2 — Gateway API resources
+# =============================================================================
+banner "STEP 2 / 4  —  Gateway components & Kubernetes Gateway API resources"
+
+comment "This is what separates the 'Max' level from 'Experienced'."
+comment "Instead of a legacy Ingress, we use Kubernetes Gateway API CRDs:"
+comment "  gateway.gateway.networking.k8s.io  — the Gateway resource"
+comment "  httproute.gateway.networking.k8s.io — route rules"
+comment ""
+comment "Architecture:"
+comment "  client → Gateway (GW API) → HTTPRoute → agentgateway-proxy → Gemini"
+pause 3
+
+run_cmd "kubectl get po,gateway,service -n agentgateway-system"
+pause 2
+
+note "Look at 'gateway.gateway.networking.k8s.io/agentgateway-proxy'. The group 'gateway.networking.k8s.io' is the Kubernetes Gateway API — not a legacy Ingress. PROGRAMMED=True means it is fully reconciled."
+
+pause 2
+comment "Now show the AgentgatewayBackend CRD and the HTTPRoute:"
+pause 1
+
+run_cmd "kubectl get agentgatewaybackend,httproute -n agentgateway-system"
+pause 2
+
+note "AgentgatewayBackend (ACCEPTED=True) connects the gateway to the Gemini provider. HTTPRoute /google defines which traffic is forwarded to that backend."
+
+pause 2
+comment "Let's inspect the AgentgatewayBackend spec in full:"
+pause 1
+
+run_cmd "kubectl get agentgatewaybackend -n agentgateway-system -o yaml"
+pause 2
+
+note "Key fields: spec.ai.provider.gemini.model = gemini-2.5-flash-lite. The API key is NOT embedded here — it is referenced via spec.policies.auth.secretRef.name = gemini-secret (a Kubernetes Secret). This is the correct secret management pattern."
+pause 5
+
+clear
+# =============================================================================
+# STEP 3 — Live LLM call
+# =============================================================================
+banner "STEP 3 / 4  —  Live LLM test through agentgateway"
+
+comment "We call the gateway's OpenAI-compatible endpoint directly."
+comment "The request flow:"
+comment "  curl (OpenAI format)"
+comment "    → agentgateway-proxy LoadBalancer IP"
+comment "      → AgentgatewayBackend translates to Gemini API"
+comment "        → Gemini responds"
+comment "          → gateway returns OpenAI Chat Completions format"
+comment ""
+comment "This is purely an LLM call — no MCP, no agents involved here."
+comment "Any OpenAI-compatible client works without modification."
+pause 1
+
+comment "Grab the LoadBalancer IP / hostname of agentgateway-proxy:"
+pause 1
+
+run_cmd "export INGRESS_GW_ADDRESS=\$(kubectl get svc -n agentgateway-system agentgateway-proxy -o jsonpath=\"{.status.loadBalancer.ingress[0]['hostname','ip']}\")"
+echo -e "${DIM}  → INGRESS_GW_ADDRESS=${INGRESS_GW_ADDRESS}${RESET}"
+pause 2
+
+comment "Send a chat completion request:"
+pause 2
+
+curl -s "$INGRESS_GW_ADDRESS/v1beta/openai/chat/completions" \
+     -H content-type:application/json \
+     -d '{"model":"","messages":[{"role":"user","content":"Explain how AI works in simple terms."}]}' | jq
+
+pause 4
+
+note "The response object field is 'chat.completion' — standard OpenAI format. The model field confirms 'gemini-2.5-flash-lite'. The gateway translated our request transparently. The caller has no idea it is talking to Gemini."
+
+pause 5
+
+clear
+# =============================================================================
+# STEP 4 — kagent agents + model routing
+# =============================================================================
+banner "STEP 4 / 4  —  kagent agents & model routing through agentgateway"
+
+comment "kagent manages declarative AI agents — each specialized for a domain:"
+comment "  k8s-agent, helm-agent, istio-agent, cilium-*, promql-agent, ..."
+comment ""
+comment "The ModelConfig resource tells kagent HOW to reach the LLM."
+comment "agentgateway-gemini ModelConfig points baseUrl at agentgateway-proxy"
+comment "inside the cluster — so ALL agent LLM traffic goes through the gateway."
+pause 3
+
+run_cmd "kubectl get agents,modelconfig -n kagent"
+pause 2
+
+note "All 10 agents show READY=True, ACCEPTED=True. Notice: modelconfig 'agentgateway-gemini' shows provider=OpenAI but model=gemini-2.5-flash-lite. 'OpenAI' here means the API *format*, not the vendor — the actual backend is Gemini via the gateway."
+
+pause 2
+comment "Lets inspect the ModelConfig that connects kagent to agentgateway:"
+pause 1
+
+run_cmd "kubectl get modelconfig agentgateway-gemini -n kagent -o yaml"
+pause 3
+
+note "Critical field: spec.openAI.baseUrl = http://agentgateway-proxy.agentgateway-system.svc.cluster.local/v1. This internal cluster DNS means kagent talks to agentgateway-proxy over the cluster network — not directly to Gemini. The gateway handles auth, policy, and routing."
+
+pause 5
+
+clear
+comment "Full request path for any kagent agent LLM call:"
+echo
+echo -e "  ${GREEN}kagent agent${RESET}"
+echo -e "      ${DIM}↓  OpenAI-format request to baseUrl${RESET}"
+echo -e "  ${CYAN}agentgateway-proxy.agentgateway-system.svc.cluster.local/v1${RESET}"
+echo -e "      ${DIM}↓  AgentgatewayBackend routes to provider${RESET}"
+echo -e "  ${YELLOW}Gemini API  gemini-2.5-flash-lite${RESET}"
+echo -e "      ${DIM}↓  response translated back to OpenAI format${RESET}"
+echo -e "  ${GREEN}kagent agent receives answer${RESET}"
+echo
+
+# =============================================================================
+# END
+# =============================================================================
+banner "Demo complete"
+
+comment "What was demonstrated:"
+echo -e "  ${GREEN}✓${RESET}  Kubernetes Gateway API gateway.networking.k8s.io — Max level"
+echo -e "  ${GREEN}✓${RESET}  AgentgatewayBackend CRD wiring Gemini as an LLM backend"
+echo -e "  ${GREEN}✓${RESET}  HTTPRoute routing traffic to the backend"
+echo -e "  ${GREEN}✓${RESET}  Live OpenAI-compatible LLM call through the gateway"
+echo -e "  ${GREEN}✓${RESET}  kagent agents with ModelConfig routing through agentgateway"
+echo -e "  ${GREEN}✓${RESET}  Secrets managed via Kubernetes Secret references"
+echo -e " "
+echo -e " "
+
+pause 4

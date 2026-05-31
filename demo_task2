@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# =============================================================================
+# MCP + A2A + AI Infrastructure demo — asciinema presentation script
+# Tasks: A2A spec, A2A agent, Inventory, MCPG, Qdrant
+# Usage: bash demo_task2
+# Tip:   record with: asciinema rec demo_task2.cast -c "bash demo_task2"
+# =============================================================================
+
+set -euo pipefail
+
+# ── colors ────────────────────────────────────────────────────────────────────
+RESET="\033[0m"
+BOLD="\033[1m"
+DIM="\033[2m"
+CYAN="\033[36m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+MAGENTA="\033[35m"
+WHITE="\033[97m"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+type_text() {
+  local text="$1"
+  local delay="${2:-0.03}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep "$delay"
+  done <<< "$text"
+  echo
+}
+
+banner() {
+  local text="$1"
+  local width=70
+  local line
+  line=$(printf '─%.0s' $(seq 1 $width))
+  echo
+  echo -e "${BOLD}${CYAN}┌${line}┐${RESET}"
+  printf "${BOLD}${CYAN}│${RESET}  %-66s${BOLD}${CYAN}  │${RESET}\n" "$text"
+  echo -e "${BOLD}${CYAN}└${line}┘${RESET}"
+  echo
+}
+
+comment() {
+  local text="# $1"
+  echo -ne "${DIM}${GREEN}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep 0.03
+  done <<< "$text"
+  echo -e "${RESET}"
+}
+
+run_cmd() {
+  local cmd="$1"
+  echo -ne "${BOLD}${WHITE}\$ ${RESET}${BOLD}${BLUE}"
+  while IFS= read -rn1 char; do
+    printf "%s" "$char"
+    sleep 0.04
+  done <<< "$cmd"
+  echo -e "${RESET}"
+  sleep 0.4
+  eval "$cmd"
+}
+
+pause() {
+  local seconds="${1:-2}"
+  sleep "$seconds"
+}
+
+note() {
+  local text="$1"
+  local width=68
+  local line
+  line=$(printf '─%.0s' $(seq 1 $width))
+  echo
+  echo -e "${YELLOW}  ╔${line}╗${RESET}"
+  echo "$text" | fold -s -w 64 | while IFS= read -r l; do
+    printf "${YELLOW}  ║${RESET}  %-64s${YELLOW}  ║${RESET}\n" "$l"
+  done
+  echo -e "${YELLOW}  ╚${line}╝${RESET}"
+  echo
+}
+
+# ── cleanup port-forwards on exit ─────────────────────────────────────────────
+cleanup() {
+  kill "$PF_A2A" "$PF_INVENTORY" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# ── title ─────────────────────────────────────────────────────────────────────
+clear
+echo
+echo -e "${BOLD}${MAGENTA}"
+cat << 'EOF'
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║      MCP · A2A · AI Infrastructure on Kubernetes — abox         ║
+  ║      Tasks: A2A spec · Agent Card · Inventory · MCPG · Qdrant   ║
+  ╚══════════════════════════════════════════════════════════════════╝
+EOF
+echo -e "${RESET}"
+
+comment "Five tasks covering AI agent protocols and infrastructure:"
+comment "  1. A2A protocol spec — Agent Card, Task, Discovery"
+comment "  2. Custom A2A agent — Well-Known URI + sendMessage"
+comment "  3. Inventory — auto-discovery of AI resources in cluster"
+comment "  4. MCPG — MCP Security Governance"
+comment "  5. Qdrant — vector database"
+pause 3
+
+# =============================================================================
+# STEP 1 — A2A Protocol overview
+# =============================================================================
+banner "TASK 1 / 5  —  A2A Protocol: Agent-to-Agent communication"
+
+comment "A2A is an open protocol for agent-to-agent communication."
+comment "Key concepts:"
+comment "  Agent Card — JSON descriptor at /.well-known/agent.json"
+comment "  Task       — unit of work delegated between agents"
+comment "  Discovery  — client fetches Agent Card to learn capabilities"
+comment "  Transport  — HTTP + JSON-RPC 2.0, SSE for streaming"
+pause 3
+
+comment "Unlike MCP (agent→tool), A2A connects agents to agents."
+comment "Both sides can have their own LLM and reasoning."
+pause 2
+
+echo
+echo -e "  ${GREEN}Agent A (LLM)${RESET}  ──A2A──▶  ${CYAN}Agent B (LLM)${RESET}"
+echo -e "                              ${DIM}↓ uses own tools${RESET}"
+echo -e "                          ${CYAN}MCP Servers${RESET}"
+echo
+pause 3
+
+comment "Discovery flow:"
+echo -e "  ${DIM}1.${RESET} GET /.well-known/agent.json  →  Agent Card"
+echo -e "  ${DIM}2.${RESET} Parse securitySchemes        →  get JWT"
+echo -e "  ${DIM}3.${RESET} POST /sendMessage            →  Task result"
+echo
+pause 3
+
+note "Spec: https://a2a-protocol.org — defines Agent Card schema, Task lifecycle, sendMessage/sendMessageStream APIs, and authentication patterns."
+pause 4
+
+clear
+# =============================================================================
+# STEP 2 — A2A Agent: cluster resources
+# =============================================================================
+banner "TASK 2 / 5  —  Custom A2A Agent with Agent Card"
+
+comment "We implemented a minimal A2A agent in Python (FastAPI)."
+comment "Deployed to the kagent namespace via GitOps (Flux)."
+comment "Exposes:"
+comment "  GET  /.well-known/agent.json  — Agent Card (discovery)"
+comment "  POST /                        — sendMessage (A2A tasks)"
+pause 3
+
+run_cmd "kubectl get deployment,svc a2a-agent -n kagent"
+pause 2
+
+note "Deployment 1/1 Ready. Service exposes port 80 → container 8000."
+pause 2
+
+comment "Start port-forward to reach the agent locally:"
+pause 1
+
+kubectl port-forward -n kagent svc/a2a-agent 8001:80 &>/dev/null &
+PF_A2A=$!
+sleep 2
+
+run_cmd "kubectl port-forward -n kagent svc/a2a-agent 8001:80 &"
+pause 2
+
+comment "Fetch the Agent Card from the Well-Known URI:"
+pause 1
+
+run_cmd "curl -s http://localhost:8001/.well-known/agent.json | jq"
+pause 3
+
+note "Agent Card contains: name, description, url, capabilities (streaming, pushNotifications), and skills list. This is what A2A clients use to discover and validate the agent."
+pause 3
+
+comment "Now send a Task via sendMessage (JSON-RPC 2.0):"
+pause 1
+
+run_cmd "curl -s -X POST http://localhost:8001/ \
+  -H 'Content-Type: application/json' \
+  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"message/send\",\"params\":{\"message\":{\"role\":\"user\",\"parts\":[{\"type\":\"text\",\"text\":\"hello from abox demo\"}]}}}' | jq"
+pause 3
+
+note "Response follows A2A spec: jsonrpc 2.0, result contains Task id, status.state=completed, and artifacts with the output parts."
+pause 4
+
+clear
+# =============================================================================
+# STEP 3 — Inventory
+# =============================================================================
+banner "TASK 3 / 5  —  Inventory: AI resource auto-discovery"
+
+comment "agentregistry-inventory auto-discovers AI resources across the cluster."
+comment "It watches CRDs: Agent, MCPServer, ModelConfig (kagent)."
+comment "Results are stored in its own CRDs: AgentCatalog, MCPServerCatalog."
+pause 3
+
+run_cmd "kubectl get deployment -n agentregistry"
+pause 2
+
+comment "Check the DiscoveryConfig — tells controller which namespaces to scan:"
+pause 1
+
+run_cmd "kubectl get discoveryconfig -n agentregistry -o wide"
+pause 2
+
+note "abox-discovery scans the 'kagent' namespace where all our agents and MCP servers live."
+pause 2
+
+comment "What was auto-discovered — agents:"
+pause 1
+
+run_cmd "kubectl get agentcatalog -n agentregistry"
+pause 3
+
+comment "What was auto-discovered — MCP servers:"
+pause 1
+
+run_cmd "kubectl get mcpservercatalog -n agentregistry"
+pause 3
+
+note "7 agents and 3 MCP servers discovered automatically — no manual registration needed. The catalog updates in real-time as resources are added or removed."
+pause 3
+
+comment "Start port-forward to show the Inventory UI:"
+pause 1
+
+kubectl port-forward -n agentregistry svc/agentregistry-api 8085:8080 &>/dev/null &
+PF_INVENTORY=$!
+sleep 2
+
+run_cmd "kubectl port-forward -n agentregistry svc/agentregistry-api 8085:8080 &"
+comment "Inventory UI available at http://localhost:8085"
+pause 4
+
+clear
+# =============================================================================
+# STEP 4 — MCPG
+# =============================================================================
+banner "TASK 4 / 5  —  MCPG: MCP Security Governance"
+
+comment "mcp-security-governance scores MCP servers against security controls:"
+comment "  Authentication (JWT), Authorization (RBAC), TLS, OWASP hardening"
+comment "  Each MCP server gets a score across 9 governance categories."
+pause 3
+
+run_cmd "kubectl get pods -n mcp-governance"
+pause 2
+
+note "Two components: controller (scoring engine, API :8090) and dashboard (web UI :3000). Both running."
+pause 2
+
+comment "Check governance CRDs installed by the chart:"
+pause 1
+
+run_cmd "kubectl get crd | grep governance"
+pause 2
+
+comment "Show services — dashboard is NodePort 30000:"
+pause 1
+
+run_cmd "kubectl get svc -n mcp-governance"
+pause 3
+
+note "MCPGovernancePolicy CRD lets you define security requirements per MCP server. GovernanceEvaluation CRD stores the scored results. Dashboard provides real-time score visualization."
+pause 4
+
+clear
+# =============================================================================
+# STEP 5 — Qdrant
+# =============================================================================
+banner "TASK 5 / 5  —  Qdrant: Vector Database"
+
+comment "Qdrant is a vector search engine — stores embeddings for RAG."
+comment "Deployed via Helm chart in the kagent namespace."
+comment "Ports: 6333 (REST API), 6334 (gRPC), 6335 (distributed)"
+pause 3
+
+run_cmd "kubectl get pod qdrant-0 -n kagent"
+pause 2
+
+run_cmd "kubectl get svc qdrant -n kagent"
+pause 2
+
+comment "Query the Qdrant REST API — version info:"
+pause 1
+
+run_cmd "curl -s http://localhost:6333 | jq"
+pause 2
+
+comment "List collections (empty — no vectors uploaded yet):"
+pause 1
+
+run_cmd "curl -s http://localhost:6333/collections | jq"
+pause 3
+
+note "Qdrant v1.18.0 is ready. In a real RAG pipeline: 1) embed text → 2) upsert vectors into a collection → 3) query by similarity. The vector database stores past incidents, documents, or knowledge for agent retrieval."
+pause 4
+
+# =============================================================================
+# END
+# =============================================================================
+clear
+banner "All 5 tasks complete"
+
+comment "Summary of what was demonstrated:"
+echo -e "  ${GREEN}✓${RESET}  Task 1 — A2A protocol: Agent Card, Task, Discovery, sendMessage"
+echo -e "  ${GREEN}✓${RESET}  Task 2 — Custom A2A agent: /.well-known/agent.json + POST / working"
+echo -e "  ${GREEN}✓${RESET}  Task 3 — Inventory: 7 agents + 3 MCP servers auto-discovered"
+echo -e "  ${GREEN}✓${RESET}  Task 4 — MCPG: MCP Security Governance deployed in mcp-governance ns"
+echo -e "  ${GREEN}✓${RESET}  Task 5 — Qdrant v1.18.0: vector database running in kagent ns"
+echo
+comment "All components deployed via GitOps (Flux OCI) to KinD cluster in GitHub Codespace."
+echo
+pause 5
