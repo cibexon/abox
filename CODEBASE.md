@@ -20,6 +20,11 @@ abox is a **local AI infrastructure sandbox**. A single `make run` provisions a 
 | AI gateway | agentgateway | v2.2.1 |
 | Agent runtime | kagent | 0.7.23 (pinned) |
 | Gateway API | gateway-api-crds | 1.4.0 |
+| MCP server | mcp/fetch (fetch-mcp) | latest |
+| Vector database | Qdrant | 1.18.0 |
+| MCP governance | mcp-security-governance | 0.1.0 |
+| AI resource inventory | agentregistry-inventory | 0.1.0 |
+| A2A agent | abox/a2a-agent | latest |
 | OCI artifact store | GHCR | — |
 | CI | GitHub Actions | — |
 
@@ -68,12 +73,20 @@ releases/
     kustomization.yaml
   agentgateway.yaml  agentgateway HelmRelease + Gateway resource
   kagent.yaml        kagent HelmRelease + HTTPRoute + ReferenceGrant
+  mcp-fetch.yaml     MCPServer CR + Agent CR (fetch-mcp + fetch-agent)
+  qdrant.yaml        Qdrant HelmRelease + HelmRepository (published chart)
+  mcpg.yaml          MCP Governance HelmRelease + GitRepository + Namespace
+  inventory.yaml     agentregistry HelmRelease + GitRepository + Namespace + DiscoveryConfig
+  a2a-agent.yaml     A2A agent Deployment + Service
   kustomization.yaml
+apps/
+  a2a-agent/         A2A agent source (FastAPI), Dockerfile, requirements.txt
 scripts/
   setup.sh           Called by make run
 .github/
   workflows/
-    flux-push.yaml   Publishes releases/ as OCI artifact on v* tags
+    flux-push.yaml         Publishes releases/ as OCI artifact on v* tags
+    a2a-agent-build.yaml   Builds and pushes a2a-agent Docker image to GHCR
 ```
 
 ### Component roles
@@ -85,6 +98,13 @@ scripts/
 | kagent | `kagent` | AI agent runtime; exposes MCP server on `:8083`, UI on `:8080` |
 | HTTPRoute `kagent` | `kagent` | Routes `/api` → kagent MCP, `/` → kagent UI |
 | ReferenceGrant `kagent` | `kagent` | Allows the HTTPRoute to reference the gateway in a different namespace |
+| fetch-mcp | `kagent` | MCP server (stdio transport); fetches web page content via `python3 -m mcp_server_fetch` |
+| fetch-agent | `kagent` | Declarative kagent agent backed by Gemini; uses fetch-mcp as tool |
+| qdrant | `kagent` | Vector database; REST API on `:6333`, dashboard at `/dashboard` |
+| mcp-governance-controller | `mcp-governance` | Scores MCP servers against 9 security governance categories; API on `:8090` |
+| mcp-governance-dashboard | `mcp-governance` | Web UI for MCP governance scores; port `:3000` |
+| agentregistry | `agentregistry` | Auto-discovers kagent Agents/MCPServers via DiscoveryConfig; UI + REST API on `:8080`, MCP on `:8083` |
+| a2a-agent | `kagent` | Minimal A2A server; Agent Card at `/.well-known/agent.json`, Task endpoint at `POST /` |
 
 ---
 
@@ -124,6 +144,12 @@ scripts/
 ---
 
 ## Key Design Decisions
+
+**GitRepository source for unpublished Helm charts**
+Some components (mcpg, inventory) ship their Helm chart only in GitHub — no published Helm repository. These use a Flux `GitRepository` source instead of `HelmRepository`. The `GitRepository` lives in `flux-system`; the `HelmRelease` references it via `sourceRef.kind: GitRepository`. Docker images for these components are published to GHCR by their own CI workflows and referenced in HelmRelease `values` overrides.
+
+**a2a-agent image lifecycle**
+`apps/a2a-agent/` contains the agent source. The `.github/workflows/a2a-agent-build.yaml` workflow builds and pushes `ghcr.io/cibexon/abox/a2a-agent:latest` on every `v*` tag. `releases/a2a-agent.yaml` references this image directly (no HelmRelease — plain Deployment + Service).
 
 **No github_token in Terraform** — Flux is bootstrapped via Helm charts, not `flux_bootstrap_git`. This avoids the need for a deploy key or PAT in OpenTofu state.
 

@@ -7,13 +7,13 @@ abox is a local Kubernetes AI infrastructure sandbox. It provides a reproducible
 ## What we want
 
 - New AI infrastructure components (observability, tracing, eval tooling, vector stores, model proxies)
+- MCP servers and A2A agents that demonstrate real integration patterns
 - Improvements to the bootstrap flow and release pipeline
 - Documentation and example configurations
 - Bug fixes for the Flux/OCI release pipeline
 
 ## What we don't want (yet)
 
-- Application code or agent implementations — those belong in projects that *use* abox
 - Alternative cluster provisioners (minikube, k3d) — KinD is intentional
 - Replacing Flux with another GitOps tool
 
