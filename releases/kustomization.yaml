@@ -8,3 +8,4 @@ resources:
   - qdrant.yaml
   - mcpg.yaml
   - inventory.yaml
+  - a2a-agent.yaml
